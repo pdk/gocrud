@@ -21,8 +21,19 @@ type scanner interface {
 	Scan(dest ...interface{}) error
 }
 
+type hookFunc func({{ .structName }}) ({{ .structName }}, error)
+
+func noopHook({{ .instanceName }} {{ .structName }}) ({{ .structName }}, error) {
+	return {{ .instanceName }}, nil
+}
+
 var (
 	insertStmt, updateStmt, deleteStmt, selectStmt, selectBy{{ .idFieldName }}Stmt string
+
+	preInsert hookFunc = noopHook
+    preUpdate hookFunc = noopHook
+    postUpdate hookFunc = noopHook
+    postDelete hookFunc = noopHook
 )
 
 // scan{{ .structName }} creates {{ .particle }} {{ .structName }} and scans into it, returning the new {{ .structName }}.
@@ -45,27 +56,51 @@ func init() {
 
 	deleteStmt = "delete from {{ .tableName }} where {{ .idColumnName }} = ?"
 	deleteStmt = rebind.ToDollar(deleteStmt)
+
+	var 
+
+	preInsert, preUpdate, postUpdate, postDelete = noopHook, noopHook, noopHook, noopHook
 }
 
 // Insert creates {{ .particle }} {{ .structName }} record in the database, returning a new {{ .structName }} with a new ID value.
 func Insert(db dbHandle, {{ .instanceName }} {{ .structName }}) ({{ .structName }}, error) {
 
-	err := db.QueryRow(insertStmt, {{ .instanceName }}.CreatedAt, {{ .instanceName }}.UpdatedAt, {{ .instanceName }}.CreatedByUserID, {{ .instanceName }}.UpdatedByUserID, {{ .instanceName }}.Name, {{ .instanceName }}.URLStub).
+	{{ .instanceName }}, err := preInsert({{ .instanceName }})
+	if err != nil {
+		return {{ .instanceName }}, err
+	}
+
+	err = db.QueryRow(insertStmt, {{ .instanceName }}.CreatedAt, {{ .instanceName }}.UpdatedAt, {{ .instanceName }}.CreatedByUserID, {{ .instanceName }}.UpdatedByUserID, {{ .instanceName }}.Name, {{ .instanceName }}.URLStub).
 		Scan(&{{ .instanceName }}.ID)
 
 	return {{ .instanceName }}, err
 }
 
 // Update modifies {{ .particle }} {{ .structName }} record in the database.
-func Update(db dbHandle, {{ .instanceName }} {{ .structName }}) (sql.Result, error) {
+func Update(db dbHandle, {{ .instanceName }} {{ .structName }}) ({{ .structName }}, error) {
 
-	return db.Exec(updateStmt, {{ .instanceName }}.CreatedAt, {{ .instanceName }}.UpdatedAt, {{ .instanceName }}.CreatedByUserID, {{ .instanceName }}.UpdatedByUserID, {{ .instanceName }}.Name, {{ .instanceName }}.URLStub,	{{ .instanceName }}.ID)
+	{{ .instanceName }}, err := preUpdate({{ .instanceName }})
+	if err != nil {
+		return {{ .instanceName }}, err
+	}		
+
+	_, err = db.Exec(updateStmt, {{ .instanceName }}.CreatedAt, {{ .instanceName }}.UpdatedAt, {{ .instanceName }}.CreatedByUserID, {{ .instanceName }}.UpdatedByUserID, {{ .instanceName }}.Name, {{ .instanceName }}.URLStub,	{{ .instanceName }}.ID)
+	if err != nil {
+		return {{ .instanceName }}, err
+	}
+
+	return postUpdate({{ .instanceName }})
 }
 
 // Delete removes {{ .particle }} {{ .structName }} record from the database.
-func Delete(db dbHandle, {{ .instanceName }} {{ .structName }}) (sql.Result, error) {
+func Delete(db dbHandle, {{ .instanceName }} {{ .structName }}) ({{ .structName }}, error) {
 
-	return db.Exec(deleteStmt, {{ .instanceName }}.ID)
+	_, err := db.Exec(deleteStmt, {{ .instanceName }}.ID)
+	if err != nil {
+		return {{ .instanceName }}, nil
+	}
+
+	return postDelete({{ .instanceName }})
 }
 
 // Query executes a select statement and returns a slice of {{ .structName }}{{ .plural }}.
@@ -133,4 +168,19 @@ func QueryBy(db dbHandle, nameValuePairs ...interface{}) ([]{{ .structName }}, e
 	}
 
 	return Query(db, whereClause.String(), values...)
+}
+
+// SetPreInsert sets the function to call before inserting the record.
+func SetPreInsert(f hookFunc) {
+	preInsert = f
+}
+
+// SetPreUpdate sets the function to call before updating the record.
+func SetPreUpdate(f hookFunc) {
+	preUpdate = f
+}
+
+// SetPostDelete sets the function to call after deleting the record.
+func SetPostDelete(f hookFunc) {
+	postDelete = f
 }

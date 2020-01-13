@@ -12,3 +12,6 @@ test :
 
 run : gocrud
 	./gocrud -template postgres -an -package example -source example/account.go -struct Account -instance acct > example/account_crud.go
+
+install : gocrud
+	cp gocrud $(HOME)/bin/gocrud

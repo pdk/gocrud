@@ -21,8 +21,19 @@ type scanner interface {
 	Scan(dest ...interface{}) error
 }
 
+type hookFunc func(Account) (Account, error)
+
+func noopHook(acct Account) (Account, error) {
+	return acct, nil
+}
+
 var (
 	insertStmt, updateStmt, deleteStmt, selectStmt, selectByIDStmt string
+
+	preInsert hookFunc = noopHook
+    preUpdate hookFunc = noopHook
+    postUpdate hookFunc = noopHook
+    postDelete hookFunc = noopHook
 )
 
 // scanAccount creates an Account and scans into it, returning the new Account.
@@ -45,27 +56,51 @@ func init() {
 
 	deleteStmt = "delete from accounts where account_id = ?"
 	deleteStmt = rebind.ToDollar(deleteStmt)
+
+	var 
+
+	preInsert, preUpdate, postUpdate, postDelete = noopHook, noopHook, noopHook, noopHook
 }
 
 // Insert creates an Account record in the database, returning a new Account with a new ID value.
 func Insert(db dbHandle, acct Account) (Account, error) {
 
-	err := db.QueryRow(insertStmt, acct.CreatedAt, acct.UpdatedAt, acct.CreatedByUserID, acct.UpdatedByUserID, acct.Name, acct.URLStub).
+	acct, err := preInsert(acct)
+	if err != nil {
+		return acct, err
+	}
+
+	err = db.QueryRow(insertStmt, acct.CreatedAt, acct.UpdatedAt, acct.CreatedByUserID, acct.UpdatedByUserID, acct.Name, acct.URLStub).
 		Scan(&acct.ID)
 
 	return acct, err
 }
 
 // Update modifies an Account record in the database.
-func Update(db dbHandle, acct Account) (sql.Result, error) {
+func Update(db dbHandle, acct Account) (Account, error) {
 
-	return db.Exec(updateStmt, acct.CreatedAt, acct.UpdatedAt, acct.CreatedByUserID, acct.UpdatedByUserID, acct.Name, acct.URLStub, acct.ID)
+	acct, err := preUpdate(acct)
+	if err != nil {
+		return acct, err
+	}		
+
+	_, err = db.Exec(updateStmt, acct.CreatedAt, acct.UpdatedAt, acct.CreatedByUserID, acct.UpdatedByUserID, acct.Name, acct.URLStub,	acct.ID)
+	if err != nil {
+		return acct, err
+	}
+
+	return postUpdate(acct)
 }
 
 // Delete removes an Account record from the database.
-func Delete(db dbHandle, acct Account) (sql.Result, error) {
+func Delete(db dbHandle, acct Account) (Account, error) {
 
-	return db.Exec(deleteStmt, acct.ID)
+	_, err := db.Exec(deleteStmt, acct.ID)
+	if err != nil {
+		return acct, nil
+	}
+
+	return postDelete(acct)
 }
 
 // Query executes a select statement and returns a slice of Accounts.
@@ -73,7 +108,7 @@ func Query(db dbHandle, queryExtra string, bindValues ...interface{}) ([]Account
 
 	results := []Account{}
 
-	query := selectStmt + queryExtra
+	query :=  selectStmt + queryExtra
 	query = rebind.ToDollar(query)
 
 	rows, err := db.Query(query, bindValues...)
@@ -133,4 +168,19 @@ func QueryBy(db dbHandle, nameValuePairs ...interface{}) ([]Account, error) {
 	}
 
 	return Query(db, whereClause.String(), values...)
+}
+
+// SetPreInsert sets the function to call before inserting the record.
+func SetPreInsert(f hookFunc) {
+	preInsert = f
+}
+
+// SetPreUpdate sets the function to call before updating the record.
+func SetPreUpdate(f hookFunc) {
+	preUpdate = f
+}
+
+// SetPostDelete sets the function to call after deleting the record.
+func SetPostDelete(f hookFunc) {
+	postDelete = f
 }
