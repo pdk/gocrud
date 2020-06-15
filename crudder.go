@@ -83,7 +83,7 @@ func markers(n int) string {
 			sb.WriteString(", ")
 		}
 		sb.WriteString("$")
-		sb.WriteString(strconv.Itoa(i))
+		sb.WriteString(strconv.Itoa(i + 1))
 	}
 
 	return sb.String()
