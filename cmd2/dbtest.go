@@ -28,27 +28,29 @@ type Foo struct {
 }
 
 var (
-	inserter1 = gocrud.NewAutoIncrIDInserter("foo", "ID", Foo{})
-	inserter2 = gocrud.NewInserter("foo", Foo{})
-	inserter3 func(*sql.DB, *Foo) (*Foo, error)
+	crudMachine = gocrud.NewMachineGetID("foo", Foo{}, "ID")
+	inserter2   = gocrud.NewInserter("foo", Foo{})
 )
 
-func init() {
-	gocrud.MakeInserter(&inserter3, "foo", Foo{})
-}
-
-func (f Foo) Insert1(db *sql.DB) (Foo, error) {
-	err := inserter1(db, &f)
+func (f Foo) Insert(db *sql.DB) (Foo, error) {
+	var err error
+	f.ID, err = crudMachine.InsertGetID(db, f)
 	return f, err
 }
 
 func (f Foo) Insert2(db *sql.DB) (Foo, error) {
-	err := inserter2(db, &f)
+	err := inserter2(db, f)
 	return f, err
 }
 
-func (f Foo) Insert3(db *sql.DB) (*Foo, error) {
-	return inserter3(db, &f)
+func (f Foo) Update(db *sql.DB) (Foo, error) {
+	err := crudMachine.Update(db, f)
+	return f, err
+}
+
+func (f Foo) Delete(db *sql.DB) (Foo, error) {
+	err := crudMachine.Delete(db, f)
+	return f, err
 }
 
 func main() {
@@ -81,7 +83,7 @@ func main() {
 		Salary:  1234.56,
 	}
 
-	f, err = f.Insert1(db)
+	f, err = f.Insert(db)
 	if err != nil {
 		log.Fatalf("failed to insert: %v", err)
 	}
@@ -92,17 +94,24 @@ func main() {
 	f.Name = "Marty"
 	f, err = f.Insert2(db)
 	if err != nil {
-		log.Fatalf("failed to insert again: %v", err)
+		log.Printf("failed to insert again: %v", err)
 	}
 
 	log.Printf("2nd rec inserted")
 
-	f.ID = 3
-	f.Name = "Wart"
-	nf, err := f.Insert3(db)
+	f.Name = "Myrtle"
+
+	f, err = f.Update(db)
 	if err != nil {
-		log.Fatalf("failed to insert 3rd: %v", err)
+		log.Printf("failed to update: %v", err)
 	}
 
-	log.Printf("final: %v", nf)
+	log.Printf("final: %v", f)
+
+	f, err = f.Delete(db)
+	if err != nil {
+		log.Printf("delete failed: %v", err)
+	}
+
+	log.Printf("deleted")
 }

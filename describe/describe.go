@@ -32,17 +32,47 @@ func (desc StructDescription) Columns() []string {
 	return cols
 }
 
-// ColumnsOmitField returns DB column names, except
-func (desc StructDescription) ColumnsOmitField(idField string) []string {
+func (desc StructDescription) ColumnsOmitFields(omitList ...string) []string {
 	cols := []string{}
 	for _, fld := range desc.Fields {
-		if strings.EqualFold(idField, fld.Name) {
-			continue
+		if !fieldInList(fld, omitList...) {
+			cols = append(cols, fld.Column)
 		}
-		cols = append(cols, fld.Column)
 	}
 
 	return cols
+}
+
+func (desc StructDescription) ColumnsOf(includeList ...string) []string {
+	cols := []string{}
+	for _, fld := range desc.Fields {
+		if fieldInList(fld, includeList...) {
+			cols = append(cols, fld.Column)
+		}
+	}
+
+	return cols
+}
+
+func (desc StructDescription) IndexesOf(includeList ...string) []int {
+	indexes := []int{}
+	for i, fld := range desc.Fields {
+		if fieldInList(fld, includeList...) {
+			indexes = append(indexes, i)
+		}
+	}
+
+	return indexes
+}
+
+// fieldInList returns true if the field matches anything in the skiplist.
+func fieldInList(fld FieldDescription, matchList ...string) bool {
+	for _, match := range matchList {
+		if strings.EqualFold(fld.Name, match) || strings.EqualFold(fld.Column, match) {
+			return true
+		}
+	}
+	return false
 }
 
 func (desc StructDescription) ColumnNameOfField(idField string) string {
